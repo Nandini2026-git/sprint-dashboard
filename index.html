@@ -1104,6 +1104,7 @@ const STORE_PAT = 'gh_pat_sprint';
 let pat = localStorage.getItem(STORE_PAT) || '';
 let isPolling = false;
 let lastGistHash = '';
+let lastSaveAt = 0;  // Timestamp of last local save — polling skips for a few seconds after
 const STORAGE_TRASH = 'sprint_dashboard_trash_v1';
 let trash = loadTrash();
 const STATUS_LABELS = {
@@ -1170,6 +1171,7 @@ function seed() {
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sprints)); }
   catch (e) { toast('Save failed: ' + e.message, true); }
+  lastSaveAt = Date.now();
   // Also push to Gist for team sync
   if (pat) gistSave();
 }
@@ -1184,6 +1186,7 @@ function loadTrash() {
 function saveTrash() {
   try { localStorage.setItem(STORAGE_TRASH, JSON.stringify(trash)); }
   catch (e) {}
+  lastSaveAt = Date.now();
   // Also push to Gist so trash is shared across all teammates
   if (pat) gistSave();
 }
@@ -1247,9 +1250,16 @@ async function gistSave() {
 
 async function gistPoll() {
   if (isPolling) return;
+  // Skip polling if we just saved locally — GitHub's API has propagation lag and
+  // returning stale data here would overwrite the user's fresh changes.
+  if (Date.now() - lastSaveAt < 8000) return;
   isPolling = true;
+  const pollStartedAt = Date.now();
   try {
     const data = await gistFetch();
+    // If a local save fired WHILE the fetch was in flight, discard this poll result
+    // — our local state is newer than what we just downloaded.
+    if (lastSaveAt > pollStartedAt) return;
     if (data && data.sprints && Array.isArray(data.sprints)) {
       let changed = false;
       const localStr = JSON.stringify(sprints);
@@ -2198,16 +2208,25 @@ document.addEventListener('keydown', e => {
 
 // On load: try to sync with Gist
 (async function bootstrapSync() {
+  // If token is set, show green immediately to indicate sync is configured
+  const dot = document.getElementById('syncDot');
+  if (pat && dot) { dot.style.background = '#10b981'; dot.title = 'Sync configured — connecting…'; }
   const data = await gistFetch();
-  if (data && Array.isArray(data) && data.length > 0) {
-    sprints = data;
+  if (data && data.sprints && Array.isArray(data.sprints) && data.sprints.length > 0) {
+    sprints = data.sprints;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sprints)); } catch(e){}
+    if (data.trash && Array.isArray(data.trash)) {
+      trash = data.trash;
+      try { localStorage.setItem(STORAGE_TRASH, JSON.stringify(trash)); } catch(e){}
+    }
     render();
-    const dot = document.getElementById('syncDot');
     if (dot) { dot.style.background = '#10b981'; dot.title = 'Synced from Gist'; }
+  } else if (pat && dot) {
+    // Token set but fetch returned no data — keep green (sync is configured)
+    dot.style.background = '#10b981'; dot.title = 'Connected (no remote data yet)';
   }
   // If we have local data but no remote, push our local up (first-time setup)
-  if (pat && (!data || data.length === 0) && sprints.length > 0) {
+  if (pat && (!data || !data.sprints || data.sprints.length === 0) && sprints.length > 0) {
     gistSave();
   }
   // Start polling every 10 seconds
