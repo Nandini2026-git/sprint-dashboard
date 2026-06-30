@@ -584,10 +584,32 @@
       <button class="modal-close" onclick="closeModal('reportsModal')">×</button>
     </div>
     <div class="modal-body">
+      <div style="background:#f8fafc;padding:12px;border-radius:8px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        <label style="font-size:13px;font-weight:600;color:var(--text)">📅 Date range:</label>
+        <select id="reportsDateRange" onchange="onReportsDateRangeChange()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;background:white">
+          <option value="all">All time</option>
+          <option value="today">Today</option>
+          <option value="week">This week</option>
+          <option value="month" selected>This month</option>
+          <option value="last7">Last 7 days</option>
+          <option value="last30">Last 30 days</option>
+          <option value="last90">Last 3 months</option>
+          <option value="year">This year</option>
+          <option value="custom">Custom range...</option>
+        </select>
+        <div id="customDateInputs" style="display:none;gap:8px;align-items:center">
+          <label style="font-size:12px;color:var(--text-dim)">From:</label>
+          <input type="date" id="reportsDateFrom" onchange="renderReports()" style="padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px" />
+          <label style="font-size:12px;color:var(--text-dim)">To:</label>
+          <input type="date" id="reportsDateTo" onchange="renderReports()" style="padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px" />
+        </div>
+        <div style="flex:1"></div>
+        <span id="reportsRangeLabel" style="font-size:12px;color:var(--text-dim);font-style:italic"></span>
+      </div>
       <div id="reportsStats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px"></div>
       <div style="margin-bottom:24px">
         <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">🚀 Sprints by Production Month</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Based on the "Went on Prod" date of each sprint. Sprints without a prod date are not shown.</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Based on the "Went on Prod" date. Hover over a bar to see which sprints.</div>
         <div style="position:relative;width:100%;height:280px"><canvas id="prodMonthChart"></canvas></div>
       </div>
       <div>
@@ -1370,12 +1392,82 @@ function openReports() {
   document.getElementById('reportsModal').classList.add('open');
 }
 
+function getReportsDateRange() {
+  const range = document.getElementById('reportsDateRange').value;
+  const now = new Date();
+  now.setHours(23, 59, 59, 999);
+  let from = null, to = new Date(now);
+  if (range === 'today') {
+    from = new Date(); from.setHours(0,0,0,0);
+  } else if (range === 'week') {
+    from = new Date(); from.setDate(from.getDate() - from.getDay()); from.setHours(0,0,0,0);
+  } else if (range === 'month') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (range === 'last7') {
+    from = new Date(); from.setDate(from.getDate() - 7); from.setHours(0,0,0,0);
+  } else if (range === 'last30') {
+    from = new Date(); from.setDate(from.getDate() - 30); from.setHours(0,0,0,0);
+  } else if (range === 'last90') {
+    from = new Date(); from.setMonth(from.getMonth() - 3); from.setHours(0,0,0,0);
+  } else if (range === 'year') {
+    from = new Date(now.getFullYear(), 0, 1);
+  } else if (range === 'custom') {
+    const f = document.getElementById('reportsDateFrom').value;
+    const t = document.getElementById('reportsDateTo').value;
+    from = f ? new Date(f + 'T00:00:00') : null;
+    to = t ? new Date(t + 'T23:59:59') : new Date(now);
+  }
+  return { from, to, range };
+}
+
+function onReportsDateRangeChange() {
+  const range = document.getElementById('reportsDateRange').value;
+  document.getElementById('customDateInputs').style.display = range === 'custom' ? 'flex' : 'none';
+  if (range === 'custom') {
+    // Default custom dates to last 30 days
+    const fromInput = document.getElementById('reportsDateFrom');
+    const toInput = document.getElementById('reportsDateTo');
+    if (!fromInput.value) {
+      const d = new Date(); d.setDate(d.getDate() - 30);
+      fromInput.value = d.toISOString().slice(0, 10);
+    }
+    if (!toInput.value) {
+      toInput.value = new Date().toISOString().slice(0, 10);
+    }
+  }
+  renderReports();
+}
+
+function isInDateRange(dateStr, from, to) {
+  if (!dateStr) return false;
+  if (!from) return true;  // "All time"
+  const d = new Date(dateStr);
+  if (isNaN(d)) return false;
+  return d >= from && d <= to;
+}
+
 function renderReports() {
+  const { from, to, range } = getReportsDateRange();
+
+  // Label showing the active range
+  let rangeLabel = '';
+  if (from) {
+    const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    rangeLabel = `${fmt(from)} – ${fmt(to)}`;
+  } else {
+    rangeLabel = 'All time';
+  }
+  document.getElementById('reportsRangeLabel').textContent = rangeLabel;
+
+  // Filter sprints by prodDate falling in range (for prod-related stats/chart).
+  // For status counts, we keep all sprints (status isn't tied to a date).
+  const inRange = sprints.filter(s => isInDateRange(s.prodDate, from, to));
+
   // Stats summary
   const total = sprints.length;
   const live = sprints.filter(s => s.status === 'live').length;
   const inQa = sprints.filter(s => s.status === 'qa').length;
-  const withProd = sprints.filter(s => s.prodDate).length;
+  const withProd = inRange.length;
   document.getElementById('reportsStats').innerHTML = `
     <div style="background:#eff6ff;padding:12px;border-radius:8px;text-align:center">
       <div style="font-size:24px;font-weight:700;color:#1e40af">${total}</div>
@@ -1391,14 +1483,14 @@ function renderReports() {
     </div>
     <div style="background:#f3e8ff;padding:12px;border-radius:8px;text-align:center">
       <div style="font-size:24px;font-weight:700;color:#6b21a8">${withProd}</div>
-      <div style="font-size:11px;color:#6b21a8;text-transform:uppercase;letter-spacing:0.5px">With Prod Date</div>
+      <div style="font-size:11px;color:#6b21a8;text-transform:uppercase;letter-spacing:0.5px">In Range</div>
     </div>
   `;
 
-  // Group sprints by year-month from prodDate
+  // Group sprints by year-month from prodDate (within date range)
   const monthCounts = {};
   const monthSprints = {};  // for tooltip detail
-  sprints.forEach(s => {
+  inRange.forEach(s => {
     if (!s.prodDate) return;
     const d = new Date(s.prodDate);
     if (isNaN(d)) return;
