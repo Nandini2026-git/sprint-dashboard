@@ -449,6 +449,7 @@
       <button class="btn btn-secondary btn-sm" onclick="exportData()">⬇ Export JSON</button>
       <button class="btn btn-secondary btn-sm" onclick="exportExcel()">📊 Export Excel</button>
       <button class="btn btn-secondary btn-sm" onclick="openTrash()">🗑 Trash <span id="trashCount" class="trash-badge" style="display:none">0</span></button>
+      <button class="btn btn-secondary btn-sm" onclick="openReports()" title="View charts and analytics for your sprints">📈 Reports</button>
       <button class="btn btn-secondary btn-sm" onclick="openSyncSetup()" title="Connect to shared Gist for live team sync">☁ Sync <span id="syncDot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#94a3b8;margin-left:4px" title="Not connected"></span></button>
       <button class="btn btn-primary btn-sm" onclick="openShareDashboard()" style="background:#7c3aed;border-color:#7c3aed" title="Share this dashboard with your team">📤 Share Dashboard</button>
       <button class="btn btn-secondary btn-sm" onclick="openSendUpdates()" title="Email your sprint updates back to the original sender (for testers who received this dashboard)">📧 Send Updates Back</button>
@@ -483,6 +484,7 @@
       <option value="prod">Sort: Prod Date</option>
       <option value="developer">Sort: Developer</option>
     </select>
+    <button class="btn btn-secondary btn-sm" id="pinnedFilterBtn" onclick="togglePinnedFilter()" title="Show only pinned sprints">☆ Pinned</button>
     <button class="btn btn-secondary btn-sm" id="clearFiltersBtn" onclick="clearFilters()" title="Clear search and all filters">✕ Clear</button>
     <div class="stats" id="stats"></div>
   </div>
@@ -573,6 +575,31 @@
   </div>
 </div>
 
+
+<!-- Reports modal -->
+<div class="modal-backdrop" id="reportsModal">
+  <div class="modal" style="max-width: 820px;">
+    <div class="modal-header">
+      <div class="modal-title">📈 Sprint Reports</div>
+      <button class="modal-close" onclick="closeModal('reportsModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="reportsStats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px"></div>
+      <div style="margin-bottom:24px">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">🚀 Sprints by Production Month</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Based on the "Went on Prod" date of each sprint. Sprints without a prod date are not shown.</div>
+        <div style="position:relative;width:100%;height:280px"><canvas id="prodMonthChart"></canvas></div>
+      </div>
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">📊 Sprints by Status</div>
+        <div style="position:relative;width:100%;height:240px"><canvas id="statusChart"></canvas></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('reportsModal')">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- Share modal -->
 <div class="modal-backdrop" id="shareModal">
@@ -1110,6 +1137,7 @@ let pat = localStorage.getItem(STORE_PAT) || '';
 let isPolling = false;
 let lastGistHash = '';
 let lastSaveAt = 0;  // Timestamp of last local save — polling skips for a few seconds after
+let pinnedFilterOn = false;  // Filter toggle — show only pinned sprints when true
 const STORAGE_TRASH = 'sprint_dashboard_trash_v1';
 let trash = loadTrash();
 const STATUS_LABELS = {
@@ -1324,6 +1352,131 @@ function openSyncSetup() {
 
 function uid() { return Math.random().toString(36).slice(2, 11); }
 
+/* =========== REPORTS / CHARTS =========== */
+let _prodChart = null;
+let _statusChart = null;
+
+function openReports() {
+  // Load Chart.js if not already loaded
+  if (typeof Chart === 'undefined') {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
+    script.onload = () => { renderReports(); };
+    script.onerror = () => toast('Failed to load chart library — check internet', true);
+    document.head.appendChild(script);
+  } else {
+    renderReports();
+  }
+  document.getElementById('reportsModal').classList.add('open');
+}
+
+function renderReports() {
+  // Stats summary
+  const total = sprints.length;
+  const live = sprints.filter(s => s.status === 'live').length;
+  const inQa = sprints.filter(s => s.status === 'qa').length;
+  const withProd = sprints.filter(s => s.prodDate).length;
+  document.getElementById('reportsStats').innerHTML = `
+    <div style="background:#eff6ff;padding:12px;border-radius:8px;text-align:center">
+      <div style="font-size:24px;font-weight:700;color:#1e40af">${total}</div>
+      <div style="font-size:11px;color:#1e40af;text-transform:uppercase;letter-spacing:0.5px">Total</div>
+    </div>
+    <div style="background:#fef3c7;padding:12px;border-radius:8px;text-align:center">
+      <div style="font-size:24px;font-weight:700;color:#92400e">${inQa}</div>
+      <div style="font-size:11px;color:#92400e;text-transform:uppercase;letter-spacing:0.5px">In QA</div>
+    </div>
+    <div style="background:#dcfce7;padding:12px;border-radius:8px;text-align:center">
+      <div style="font-size:24px;font-weight:700;color:#166534">${live}</div>
+      <div style="font-size:11px;color:#166534;text-transform:uppercase;letter-spacing:0.5px">Live</div>
+    </div>
+    <div style="background:#f3e8ff;padding:12px;border-radius:8px;text-align:center">
+      <div style="font-size:24px;font-weight:700;color:#6b21a8">${withProd}</div>
+      <div style="font-size:11px;color:#6b21a8;text-transform:uppercase;letter-spacing:0.5px">With Prod Date</div>
+    </div>
+  `;
+
+  // Group sprints by year-month from prodDate
+  const monthCounts = {};
+  const monthSprints = {};  // for tooltip detail
+  sprints.forEach(s => {
+    if (!s.prodDate) return;
+    const d = new Date(s.prodDate);
+    if (isNaN(d)) return;
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    monthCounts[key] = (monthCounts[key] || 0) + 1;
+    if (!monthSprints[key]) monthSprints[key] = [];
+    monthSprints[key].push(s.name);
+  });
+  const monthKeys = Object.keys(monthCounts).sort();
+  const labels = monthKeys.map(k => {
+    const [y, m] = k.split('-');
+    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  });
+  const data = monthKeys.map(k => monthCounts[k]);
+
+  // Destroy previous chart if exists
+  if (_prodChart) _prodChart.destroy();
+  const ctx1 = document.getElementById('prodMonthChart').getContext('2d');
+  _prodChart = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: labels.length ? labels : ['No prod dates yet'],
+      datasets: [{
+        label: 'Sprints to prod',
+        data: data.length ? data : [0],
+        backgroundColor: '#2a78d6',
+        borderRadius: 4,
+        maxBarThickness: 40
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterLabel: (ctx) => {
+              const key = monthKeys[ctx.dataIndex];
+              if (!key) return '';
+              return monthSprints[key].join(', ');
+            }
+          }
+        }
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } },
+        x: { ticks: { autoSkip: false, maxRotation: 45 } }
+      }
+    }
+  });
+
+  // Status pie chart
+  const statusCounts = { dev: 0, qa: 0, prod: 0, live: 0, blocked: 0 };
+  sprints.forEach(s => { if (statusCounts[s.status] !== undefined) statusCounts[s.status]++; });
+  if (_statusChart) _statusChart.destroy();
+  const ctx2 = document.getElementById('statusChart').getContext('2d');
+  _statusChart = new Chart(ctx2, {
+    type: 'doughnut',
+    data: {
+      labels: ['In Dev', 'In QA', 'In Prod', 'Live', 'Blocked'],
+      datasets: [{
+        data: [statusCounts.dev, statusCounts.qa, statusCounts.prod, statusCounts.live, statusCounts.blocked],
+        backgroundColor: ['#94a3b8', '#f59e0b', '#3b82f6', '#10b981', '#ef4444'],
+        borderWidth: 2,
+        borderColor: '#fff'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { padding: 12, font: { size: 13 } } }
+      }
+    }
+  });
+}
+
 /* Toggle pin/favorite on a sprint */
 function togglePin(id) {
   const s = sprints.find(x => x.id === id);
@@ -1333,6 +1486,24 @@ function togglePin(id) {
   save();
   render();
   toast(s.pinned ? '★ Pinned to top' : 'Unpinned');
+}
+
+/* Toggle the "show only pinned" filter */
+function togglePinnedFilter() {
+  pinnedFilterOn = !pinnedFilterOn;
+  const btn = document.getElementById('pinnedFilterBtn');
+  if (pinnedFilterOn) {
+    btn.innerHTML = '★ Pinned';
+    btn.style.background = '#fef3c7';
+    btn.style.borderColor = '#f59e0b';
+    btn.style.color = '#92400e';
+  } else {
+    btn.innerHTML = '☆ Pinned';
+    btn.style.background = '';
+    btn.style.borderColor = '';
+    btn.style.color = '';
+  }
+  render();
 }
 
 /* One-time bulk update: set OneDrive folder URL on all sprint bug links */
@@ -1379,6 +1550,7 @@ function render() {
 
   // filter
   let list = sprints.filter(s => {
+    if (pinnedFilterOn && !s.pinned) return false;
     if (fs && s.status !== fs) return false;
     if (fd && !parseList(s.developer).includes(fd)) return false;
     if (ft && !parseList(s.tester).includes(ft)) return false;
@@ -1506,6 +1678,17 @@ function clearFilters() {
   document.getElementById('filterDev').value = '';
   document.getElementById('filterTester').value = '';
   document.getElementById('sortBy').value = 'updated';
+  // Also reset pinned filter
+  if (pinnedFilterOn) {
+    pinnedFilterOn = false;
+    const btn = document.getElementById('pinnedFilterBtn');
+    if (btn) {
+      btn.innerHTML = '☆ Pinned';
+      btn.style.background = '';
+      btn.style.borderColor = '';
+      btn.style.color = '';
+    }
+  }
   render();
   toast('Filters cleared');
 }
