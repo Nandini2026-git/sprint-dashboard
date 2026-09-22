@@ -89,6 +89,27 @@
   .header-title { font-size: 24px; font-weight: 700; color: var(--text); }
   .header-sub { color: var(--text-dim); font-size: 14px; margin-top: 2px; }
   .header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .view-tabs { display:flex; gap:4px; margin: 0 0 16px; border-bottom: 2px solid #e2e8f0; }
+  .view-tab { background:transparent; border:none; padding:10px 20px; font-size:14px; font-weight:600; color:#64748b; cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px; transition: all 0.15s; }
+  .view-tab:hover { color:#1e293b; background:#f8fafc; }
+  .view-tab.active { color:#4f46e5; border-bottom-color:#4f46e5; }
+  .link-card { background:white; border:1px solid #e2e8f0; border-radius:10px; padding:16px 18px; margin-bottom:10px; display:flex; align-items:flex-start; gap:14px; transition: box-shadow 0.15s, border-color 0.15s; }
+  .link-card:hover { border-color:#c7d2fe; box-shadow: 0 2px 8px rgba(79,70,229,0.08); }
+  .link-icon { width:40px; height:40px; border-radius:8px; background:#eef2ff; color:#4f46e5; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+  .link-body { flex:1; min-width:0; }
+  .link-title-row { display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap; }
+  .link-title { font-size:15px; font-weight:600; color:#1e293b; }
+  .link-category { background:#f1f5f9; color:#475569; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; text-transform:uppercase; letter-spacing:0.5px; }
+  .link-url { color:#4f46e5; font-size:13px; text-decoration:none; word-break:break-all; display:inline-block; margin-bottom:4px; }
+  .link-url:hover { text-decoration:underline; }
+  .link-notes { color:#64748b; font-size:13px; margin-top:6px; line-height:1.5; }
+  .link-actions { display:flex; gap:4px; flex-shrink:0; }
+  .link-actions button { background:transparent; border:1px solid #e2e8f0; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:12px; color:#64748b; }
+  .link-actions button:hover { background:#f1f5f9; color:#1e293b; }
+  .link-actions button.copy-btn:hover { color:#059669; border-color:#a7f3d0; }
+  .link-actions button.edit-btn:hover { color:#4f46e5; border-color:#c7d2fe; }
+  .links-empty { text-align:center; padding:60px 20px; color:#94a3b8; }
+  .links-empty h3 { color:#475569; margin: 12px 0 8px; }
 
   /* Buttons */
   .btn {
@@ -460,6 +481,15 @@
     </div>
   </div>
 
+  <!-- View tabs -->
+  <div class="view-tabs">
+    <button class="view-tab active" id="tab-sprints" onclick="switchView('sprints')">📋 Sprints</button>
+    <button class="view-tab" id="tab-links" onclick="switchView('links')">🔗 Links</button>
+  </div>
+
+  <!-- SPRINTS VIEW -->
+  <div id="sprintsView">
+
   <!-- Toolbar -->
   <div class="toolbar">
     <input type="text" class="search-input" id="search" placeholder="Search by sprint name, developer, or notes..." oninput="render()" />
@@ -491,6 +521,58 @@
 
   <!-- Cards -->
   <div id="cards"></div>
+
+  </div><!-- /sprintsView -->
+
+  <!-- LINKS VIEW -->
+  <div id="linksView" style="display:none">
+    <div class="toolbar">
+      <input type="text" class="search-input" id="linksSearch" placeholder="Search links by title, URL, category, or notes..." oninput="linksSearch=this.value; renderLinks()" />
+      <select class="filter-select" id="linksFilterCat" onchange="linksFilterCat=this.value; renderLinks()">
+        <option value="">All Categories</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" onclick="linksSearch=''; linksFilterCat=''; document.getElementById('linksSearch').value=''; renderLinks()">✕ Clear</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-primary" onclick="openLinkModal()">+ Add Link</button>
+    </div>
+    <div id="linksList"></div>
+  </div>
+
+  <!-- LINK EDIT MODAL -->
+  <div class="modal-backdrop" id="linkModal">
+    <div class="modal" style="max-width:520px">
+      <div class="modal-header">
+        <div class="modal-title" id="linkModalTitle">Add Link</div>
+        <button class="modal-close" onclick="closeModal('linkModal')">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="linkId" />
+        <div class="form-row">
+          <label class="form-label">Title *</label>
+          <input type="text" class="form-input" id="linkTitle" placeholder="e.g., Admin Panel, Feature Flag Dashboard" />
+        </div>
+        <div class="form-row">
+          <label class="form-label">URL *</label>
+          <input type="text" class="form-input" id="linkUrl" placeholder="https://..." />
+        </div>
+        <div class="form-row">
+          <label class="form-label">Category</label>
+          <input type="text" class="form-input" id="linkCategory" placeholder="e.g., Admin, Reports, Internal Tools" list="linkCategoryList" />
+          <datalist id="linkCategoryList"></datalist>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Notes</label>
+          <textarea class="form-input" id="linkNotes" rows="3" placeholder="Optional description or usage notes"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger btn-sm" onclick="deleteLink()" id="linkDeleteBtn" style="display:none">🗑 Delete</button>
+        <div style="flex:1"></div>
+        <button class="btn btn-secondary" onclick="closeModal('linkModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveLink()">Save</button>
+      </div>
+    </div>
+  </div>
 
   <div class="footer-note">Data stored locally in your browser · Export regularly to share with the team</div>
 </div>
@@ -1162,6 +1244,25 @@ let lastSaveAt = 0;  // Timestamp of last local save — polling skips for a few
 let pinnedFilterOn = false;  // Filter toggle — show only pinned sprints when true
 const STORAGE_TRASH = 'sprint_dashboard_trash_v1';
 let trash = loadTrash();
+const STORAGE_LINKS = 'sprint_dashboard_links_v1';
+let links = loadLinks();
+let currentView = 'sprints';  // 'sprints' or 'links'
+let linksFilterCat = '';
+let linksSearch = '';
+
+function loadLinks() {
+  try {
+    const d = localStorage.getItem(STORAGE_LINKS);
+    if (d) return JSON.parse(d);
+  } catch (e) {}
+  return [];
+}
+function saveLinks() {
+  try { localStorage.setItem(STORAGE_LINKS, JSON.stringify(links)); }
+  catch (e) {}
+  lastSaveAt = Date.now();
+  if (pat) gistSave();
+}
 const STATUS_LABELS = {
   dev: 'In Dev',
   qa: 'In QA',
@@ -1260,9 +1361,9 @@ async function gistFetch() {
     if (hash === lastGistHash) return null;
     lastGistHash = hash;
     const parsed = JSON.parse(content || '[]');
-    // Support both old format (array) and new format ({ sprints, trash })
-    if (Array.isArray(parsed)) return { sprints: parsed, trash: null };
-    return { sprints: parsed.sprints || [], trash: parsed.trash || [] };
+    // Support both old format (array) and new format ({ sprints, trash, links })
+    if (Array.isArray(parsed)) return { sprints: parsed, trash: null, links: null };
+    return { sprints: parsed.sprints || [], trash: parsed.trash || [], links: parsed.links || null };
   } catch (e) {
     console.error('Gist fetch failed:', e);
     return null;
@@ -1275,7 +1376,7 @@ async function gistSave() {
     return false;
   }
   try {
-    const payload = { sprints: sprints, trash: trash };
+    const payload = { sprints: sprints, trash: trash, links: links };
     const content = JSON.stringify(payload, null, 2);
     const r = await fetch('https://api.github.com/gists/' + GIST_ID, {
       method: 'PATCH',
@@ -1330,8 +1431,18 @@ async function gistPoll() {
         const remoteTrashStr = JSON.stringify(data.trash);
         if (localTrashStr !== remoteTrashStr) {
           trash = data.trash;
-          // Save to localStorage only (don't push back to Gist — we just got this from there)
           try { localStorage.setItem(STORAGE_TRASH, JSON.stringify(trash)); } catch(e){}
+          changed = true;
+        }
+      }
+      // Sync shared links too
+      if (data.links && Array.isArray(data.links)) {
+        const localLinksStr = JSON.stringify(links);
+        const remoteLinksStr = JSON.stringify(data.links);
+        if (localLinksStr !== remoteLinksStr) {
+          links = data.links;
+          try { localStorage.setItem(STORAGE_LINKS, JSON.stringify(links)); } catch(e){}
+          if (currentView === 'links') renderLinks();
           changed = true;
         }
       }
@@ -1373,6 +1484,132 @@ function openSyncSetup() {
 }
 
 function uid() { return Math.random().toString(36).slice(2, 11); }
+
+/* =========== LINKS VIEW =========== */
+function switchView(view) {
+  currentView = view;
+  document.getElementById('sprintsView').style.display = view === 'sprints' ? '' : 'none';
+  document.getElementById('linksView').style.display = view === 'links' ? '' : 'none';
+  document.getElementById('tab-sprints').classList.toggle('active', view === 'sprints');
+  document.getElementById('tab-links').classList.toggle('active', view === 'links');
+  if (view === 'links') renderLinks();
+  else render();
+}
+
+function renderLinks() {
+  // populate category filter
+  const cats = [...new Set(links.map(l => l.category).filter(Boolean))].sort();
+  const catSel = document.getElementById('linksFilterCat');
+  const cur = catSel.value;
+  catSel.innerHTML = '<option value="">All Categories</option>' +
+    cats.map(c => `<option value="${escapeAttr(c)}" ${c===cur?'selected':''}>${escapeHtml(c)}</option>`).join('');
+  document.getElementById('linkCategoryList').innerHTML = cats.map(c => `<option value="${escapeAttr(c)}">`).join('');
+
+  // filter
+  const s = (linksSearch || '').toLowerCase().trim();
+  let list = links.filter(l => {
+    if (linksFilterCat && l.category !== linksFilterCat) return false;
+    if (s) {
+      const blob = ((l.title||'') + ' ' + (l.url||'') + ' ' + (l.category||'') + ' ' + (l.notes||'')).toLowerCase();
+      if (!blob.includes(s)) return false;
+    }
+    return true;
+  });
+  list.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+
+  const holder = document.getElementById('linksList');
+  if (!list.length) {
+    holder.innerHTML = links.length
+      ? `<div class="links-empty"><div style="font-size:48px">🔍</div><h3>No matches</h3><p>Try a different search or clear the filter.</p></div>`
+      : `<div class="links-empty"><div style="font-size:48px">🔗</div><h3>No links yet</h3><p>Add your first private link so your team can find it.</p><button class="btn btn-primary" onclick="openLinkModal()" style="margin-top:12px">+ Add Link</button></div>`;
+    return;
+  }
+
+  holder.innerHTML = list.map(l => `
+    <div class="link-card">
+      <div class="link-icon">🔗</div>
+      <div class="link-body">
+        <div class="link-title-row">
+          <span class="link-title">${escapeHtml(l.title || '(no title)')}</span>
+          ${l.category ? `<span class="link-category">${escapeHtml(l.category)}</span>` : ''}
+        </div>
+        <a href="${escapeAttr(l.url)}" target="_blank" rel="noopener" class="link-url">${escapeHtml(l.url)}</a>
+        ${l.notes ? `<div class="link-notes">${escapeHtml(l.notes)}</div>` : ''}
+      </div>
+      <div class="link-actions">
+        <button class="copy-btn" onclick="copyLinkUrl('${l.id}')" title="Copy URL to clipboard">📋 Copy</button>
+        <button class="edit-btn" onclick="openLinkModal('${l.id}')" title="Edit link">✏️ Edit</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openLinkModal(id) {
+  const isEdit = !!id;
+  document.getElementById('linkModalTitle').textContent = isEdit ? 'Edit Link' : 'Add Link';
+  document.getElementById('linkDeleteBtn').style.display = isEdit ? '' : 'none';
+  document.getElementById('linkId').value = id || '';
+  if (isEdit) {
+    const l = links.find(x => x.id === id);
+    if (!l) return;
+    document.getElementById('linkTitle').value = l.title || '';
+    document.getElementById('linkUrl').value = l.url || '';
+    document.getElementById('linkCategory').value = l.category || '';
+    document.getElementById('linkNotes').value = l.notes || '';
+  } else {
+    document.getElementById('linkTitle').value = '';
+    document.getElementById('linkUrl').value = '';
+    document.getElementById('linkCategory').value = '';
+    document.getElementById('linkNotes').value = '';
+  }
+  // populate category datalist
+  const cats = [...new Set(links.map(l => l.category).filter(Boolean))].sort();
+  document.getElementById('linkCategoryList').innerHTML = cats.map(c => `<option value="${escapeAttr(c)}">`).join('');
+  document.getElementById('linkModal').classList.add('open');
+  setTimeout(() => document.getElementById('linkTitle').focus(), 50);
+}
+
+function saveLink() {
+  const id = document.getElementById('linkId').value;
+  const title = document.getElementById('linkTitle').value.trim();
+  const url = document.getElementById('linkUrl').value.trim();
+  const category = document.getElementById('linkCategory').value.trim();
+  const notes = document.getElementById('linkNotes').value.trim();
+  if (!title) { toast('Title is required', true); return; }
+  if (!url) { toast('URL is required', true); return; }
+  const now = new Date().toISOString();
+  if (id) {
+    const l = links.find(x => x.id === id);
+    if (!l) return;
+    l.title = title; l.url = url; l.category = category; l.notes = notes; l.updatedAt = now;
+  } else {
+    links.unshift({ id: uid(), title, url, category, notes, createdAt: now, updatedAt: now });
+  }
+  saveLinks();
+  renderLinks();
+  closeModal('linkModal');
+  toast(id ? 'Link updated' : '✅ Link added');
+}
+
+function deleteLink() {
+  const id = document.getElementById('linkId').value;
+  if (!id) return;
+  if (!confirm('Delete this link? This cannot be undone.')) return;
+  links = links.filter(x => x.id !== id);
+  saveLinks();
+  renderLinks();
+  closeModal('linkModal');
+  toast('Link deleted');
+}
+
+function copyLinkUrl(id) {
+  const l = links.find(x => x.id === id);
+  if (!l) return;
+  navigator.clipboard.writeText(l.url).then(
+    () => toast('📋 URL copied to clipboard'),
+    () => toast('Could not copy — try selecting the URL manually', true)
+  );
+}
 
 /* =========== REPORTS / CHARTS =========== */
 let _prodChart = null;
@@ -2534,6 +2771,10 @@ document.addEventListener('keydown', e => {
     if (data.trash && Array.isArray(data.trash)) {
       trash = data.trash;
       try { localStorage.setItem(STORAGE_TRASH, JSON.stringify(trash)); } catch(e){}
+    }
+    if (data.links && Array.isArray(data.links)) {
+      links = data.links;
+      try { localStorage.setItem(STORAGE_LINKS, JSON.stringify(links)); } catch(e){}
     }
     render();
     if (dot) { dot.style.background = '#10b981'; dot.title = 'Synced from Gist'; }
